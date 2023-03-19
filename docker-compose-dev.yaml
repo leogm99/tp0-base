@@ -32,6 +32,66 @@ services:
     environment:
       - CLI_ID=2
 
+  client3:
+    <<: *client_config
+    container_name: client3
+    environment:
+      - CLI_ID=3
+
+  client4:
+    <<: *client_config
+    container_name: client4
+    environment:
+      - CLI_ID=4
+
+  client5:
+    <<: *client_config
+    container_name: client5
+    environment:
+      - CLI_ID=5
+
+  client6:
+    <<: *client_config
+    container_name: client6
+    environment:
+      - CLI_ID=6
+
+  client7:
+    <<: *client_config
+    container_name: client7
+    environment:
+      - CLI_ID=7
+
+  client8:
+    <<: *client_config
+    container_name: client8
+    environment:
+      - CLI_ID=8
+
+  client9:
+    <<: *client_config
+    container_name: client9
+    environment:
+      - CLI_ID=9
+
+  client10:
+    <<: *client_config
+    container_name: client10
+    environment:
+      - CLI_ID=10
+
+  client11:
+    <<: *client_config
+    container_name: client11
+    environment:
+      - CLI_ID=11
+
+  client12:
+    <<: *client_config
+    container_name: client12
+    environment:
+      - CLI_ID=12
+
 networks:
   testing_net:
     ipam:

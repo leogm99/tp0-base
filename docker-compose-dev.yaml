@@ -11,7 +11,8 @@ services:
     networks:
       - testing_net
 
-  client1:
+  # Add yaml anchor to avoid duplicating code and reducing the file size
+  client1: &client_config
     container_name: client1
     image: client:latest
     entrypoint: /client
@@ -22,6 +23,14 @@ services:
       - testing_net
     depends_on:
       - server
+
+  # we can now reference the `client_config` anchor from another service to copy most of the config without increasing the file size
+  # <<: *client_config references the client configuration from the anchor created above
+  client2:
+    <<: *client_config
+    container_name: client2
+    environment:
+      - CLI_ID=2
 
 networks:
   testing_net:

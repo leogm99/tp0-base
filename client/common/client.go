@@ -4,6 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -48,10 +51,19 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
+// registers a channel to listen to the SIGTERM signal
+// the channel is read-only
+func (c *Client) registerShutdownSignal() <-chan os.Signal {
+	signal_channel := make(chan os.Signal, 1)
+	signal.Notify(signal_channel, syscall.SIGTERM)
+	return signal_channel
+}
+
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) StartClientLoop() {
 	// autoincremental msgID to identify every message sent
 	msgID := 1
+	signal_channel := c.registerShutdownSignal()
 
 loop:
 	// Send messages if the loopLapse threshold has not been surpassed
@@ -61,6 +73,13 @@ loop:
 	        log.Infof("action: timeout_detected | result: success | client_id: %v",
                 c.config.ID,
             )
+			break loop
+		// the signal is catched here, which means that the socket was already closed on the last iteration
+		// so we only need to break from the loop
+		case <-signal_channel:
+			log.Infof("action: signal_received | result: success | client_id: %v",
+				c.config.ID,
+			)
 			break loop
 		default:
 		}

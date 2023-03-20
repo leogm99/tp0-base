@@ -1,5 +1,6 @@
 import socket
 import logging
+import signal
 
 
 class Server:
@@ -8,6 +9,7 @@ class Server:
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
+        self._closed = False
 
     def run(self):
         """
@@ -18,10 +20,18 @@ class Server:
         finishes, servers starts to accept new connections again
         """
 
-        # TODO: Modify this program to handle signal to graceful shutdown
-        # the server
-        while True:
-            client_sock = self.__accept_new_connection()
+        logging.info('Registering SIGTERM signal')
+        signal.signal(signal.SIGTERM, lambda _n,_f: self.stop())
+        while not self._closed:
+            # accept throws an exception if the socket is closed
+            try:
+                client_sock = self.__accept_new_connection()
+            except OSError as e:
+                if self._closed:
+                    logging.info('action: accept_new_connection | result: failed (expected) | reason: acceptor socket was already closed')
+                else:
+                    logging.info(f'action: accept_new_connection | result: failed | error: {e}')
+                break
             self.__handle_client_connection(client_sock)
 
     def __handle_client_connection(self, client_sock):
@@ -56,3 +66,19 @@ class Server:
         c, addr = self._server_socket.accept()
         logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
         return c
+
+
+    def stop(self):
+        """
+        Stops the server by shutting and closing down the current socket
+        """
+
+        logging.info('action: stop_server | result: in_progress')
+        # shutdown both channels
+        self._server_socket.shutdown(socket.SHUT_RDWR)
+        # we only need to close this socket as the client_socket will be closed by `__handle_client_connection`
+        # even if the execution continues here because of a signal
+        # close
+        self._server_socket.close()
+        self._closed = True
+        logging.info('action: stop_server | result: success')

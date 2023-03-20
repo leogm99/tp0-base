@@ -1,13 +1,5 @@
-# TP0: Ej1.1
+# TP0: Ej2
 
-El script que genera N configuraciones de cliente se encuentra en el directorio `scripts` con el nombre `gen_docker_compose_n_clients.py`.
-Lo unico que se requiere para correrlo es un interprete de Python>=3.8.
+La solucion a este ejercicio requiere setear los archivos de configuracion como volume mounts (e ignorarlos en la copia de archivos de Docker).
 
-
-**IMPORTANTE**: El script sobreescribe el file original.
-
-Ejemplo de ejecucion:
-
-```
-  python3 gen_docker_compose_n_clients.py -n 5 -f ../docker-compose-dev.yaml
-```
+Se testea rebuildeando la imagen habiendo cambiado los config files y checkeando que todas las layers construidas sean levantadas de cache.

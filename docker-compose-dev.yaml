@@ -23,6 +23,11 @@ services:
     environment:
       - CLI_ID=1
       - CLI_LOG_LEVEL=DEBUG
+      - CLI_NAME=Leonardo
+      - CLI_SURNAME=Giampieri Mutti
+      - CLI_DOCUMENT=1337
+      - CLI_BIRTHDATE=1999-03-20
+      - CLI_NUMBER=1337
     networks:
       - testing_net
     depends_on:
@@ -32,73 +37,49 @@ services:
         source: ./client/config.yaml
         target: /config.yaml
 
-  # we can now reference the `client_config` anchor from another service to copy most of the config without increasing the file size
-  # <<: *client_config references the client configuration from the anchor created above
   client2:
     <<: *client_config
     container_name: client2
     environment:
       - CLI_ID=2
+      - CLI_NAME=Great Lord
+      - CLI_SURNAME=Voldemort
+      - CLI_DOCUMENT=1234
+      - CLI_BIRTHDATE=1999-01-01
+      - CLI_NUMBER=4321
 
   client3:
     <<: *client_config
     container_name: client3
     environment:
       - CLI_ID=3
+      - CLI_NAME=Juan Carlos
+      - CLI_SURNAME=Perez
+      - CLI_DOCUMENT=1111
+      - CLI_BIRTHDATE=1999-01-02
+      - CLI_NUMBER=7
 
   client4:
     <<: *client_config
     container_name: client4
     environment:
       - CLI_ID=4
+      - CLI_NAME=Jorge
+      - CLI_SURNAME=Ramirez
+      - CLI_DOCUMENT=1112
+      - CLI_BIRTHDATE=1999-01-03
+      - CLI_NUMBER=6
 
   client5:
     <<: *client_config
     container_name: client5
     environment:
       - CLI_ID=5
-
-  client6:
-    <<: *client_config
-    container_name: client6
-    environment:
-      - CLI_ID=6
-
-  client7:
-    <<: *client_config
-    container_name: client7
-    environment:
-      - CLI_ID=7
-
-  client8:
-    <<: *client_config
-    container_name: client8
-    environment:
-      - CLI_ID=8
-
-  client9:
-    <<: *client_config
-    container_name: client9
-    environment:
-      - CLI_ID=9
-
-  client10:
-    <<: *client_config
-    container_name: client10
-    environment:
-      - CLI_ID=10
-
-  client11:
-    <<: *client_config
-    container_name: client11
-    environment:
-      - CLI_ID=11
-
-  client12:
-    <<: *client_config
-    container_name: client12
-    environment:
-      - CLI_ID=12
+      - CLI_NAME=Carlos
+      - CLI_SURNAME=Martinez
+      - CLI_DOCUMENT=1113
+      - CLI_BIRTHDATE=1999-01-04
+      - CLI_NUMBER=8
 
 networks:
   testing_net:

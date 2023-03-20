@@ -36,6 +36,13 @@ func InitConfig() (*viper.Viper, error) {
 	v.BindEnv("loop", "lapse")
 	v.BindEnv("log", "level")
 
+	// User bet variables
+	v.BindEnv("name")
+	v.BindEnv("surname")
+	v.BindEnv("document")
+	v.BindEnv("birthdate")
+	v.BindEnv("number")
+
 	// Try to read configuration from config file. If config file
 	// does not exists then ReadInConfig will fail but configuration
 	// can be loaded from the environment variables so we shouldn't
@@ -66,11 +73,11 @@ func InitLogger(logLevel string) error {
 		return err
 	}
 
-    customFormatter := &logrus.TextFormatter{
-      TimestampFormat: "2006-01-02 15:04:05",
-      FullTimestamp: false,
-    }
-    logrus.SetFormatter(customFormatter)
+	customFormatter := &logrus.TextFormatter{
+		TimestampFormat: "2006-01-02 15:04:05",
+		FullTimestamp:   false,
+	}
+	logrus.SetFormatter(customFormatter)
 	logrus.SetLevel(level)
 	return nil
 }
@@ -78,13 +85,14 @@ func InitLogger(logLevel string) error {
 // PrintConfig Print all the configuration parameters of the program.
 // For debugging purposes only
 func PrintConfig(v *viper.Viper) {
-	logrus.Infof("action: config | result: success | client_id: %s | server_address: %s | loop_lapse: %v | loop_period: %v | log_level: %s",
-	    v.GetString("id"),
-	    v.GetString("server.address"),
-	    v.GetDuration("loop.lapse"),
-	    v.GetDuration("loop.period"),
-	    v.GetString("log.level"),
-    )
+	logrus.Infof("action: config | result: success | client_id: %s | server_address: %s | loop_lapse: %v | loop_period: %v | log_level: %s | max_packet_size: %s",
+		v.GetString("id"),
+		v.GetString("server.address"),
+		v.GetDuration("loop.lapse"),
+		v.GetDuration("loop.period"),
+		v.GetString("log.level"),
+		v.GetString("max_packet_size"),
+	)
 }
 
 func main() {
@@ -105,8 +113,17 @@ func main() {
 		ID:            v.GetString("id"),
 		LoopLapse:     v.GetDuration("loop.lapse"),
 		LoopPeriod:    v.GetDuration("loop.period"),
+		MaxPacketSize: v.GetInt("max_packet_size"),
 	}
 
-	client := common.NewClient(clientConfig)
-	client.StartClientLoop()
+	bet := &common.Bet{
+		PersonName:      v.GetString("name"),
+		PersonSurname:   v.GetString("surname"),
+		PersonDocument:  v.GetString("document"),
+		PersonBirthDate: v.GetString("birthdate"),
+		PersonBet:       uint16(v.GetUint("number")),
+		LotteryId:       uint8(v.GetUint("id")),
+	}
+	client := common.NewClient(clientConfig, bet)
+	client.StartClient()
 }

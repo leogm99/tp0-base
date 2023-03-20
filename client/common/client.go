@@ -1,8 +1,7 @@
 package common
 
 import (
-	"bufio"
-	"fmt"
+	"math"
 	"net"
 	"os"
 	"os/signal"
@@ -18,21 +17,40 @@ type ClientConfig struct {
 	ServerAddress string
 	LoopLapse     time.Duration
 	LoopPeriod    time.Duration
+	MaxPacketSize int
 }
 
 // Client Entity that encapsulates how
 type Client struct {
 	config ClientConfig
 	conn   net.Conn
+	bet    *Bet
 }
 
 // NewClient Initializes a new client receiving the configuration
-// as a parameter
-func NewClient(config ClientConfig) *Client {
+// and the bet as parameters
+func NewClient(config ClientConfig, bet *Bet) *Client {
 	client := &Client{
 		config: config,
+		bet:    bet,
 	}
 	return client
+}
+
+// splitPacketAtSize takes a buffer and splits it in chunks of at most
+// `maxPacketSize` bytes each (configurable)
+func splitPacketAtSize(buffer []byte, maxPacketSize int) [][]byte {
+	splits := int(math.Ceil(float64(len(buffer)) / float64(maxPacketSize)))
+	packets := make([][]byte, splits)
+	for i := 0; i < splits; i += 1 {
+		if len(buffer) > maxPacketSize {
+			packets[i] = buffer[i*maxPacketSize : (i+1)*maxPacketSize]
+			buffer = buffer[(i+1)*maxPacketSize:]
+		} else {
+			packets[i] = buffer[:]
+		}
+	}
+	return packets
 }
 
 // CreateClientSocket Initializes client socket. In case of
@@ -42,7 +60,7 @@ func (c *Client) createClientSocket() error {
 	conn, err := net.Dial("tcp", c.config.ServerAddress)
 	if err != nil {
 		log.Fatalf(
-	        "action: connect | result: fail | client_id: %v | error: %v",
+			"action: connect | result: fail | client_id: %v | error: %v",
 			c.config.ID,
 			err,
 		)
@@ -59,60 +77,77 @@ func (c *Client) registerShutdownSignal() <-chan os.Signal {
 	return signal_channel
 }
 
-// StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop() {
-	// autoincremental msgID to identify every message sent
-	msgID := 1
-	signal_channel := c.registerShutdownSignal()
+func (c *Client) writeAll(buffer []byte) error {
+	toSendBytes := len(buffer)
+	currently_sent := 0
 
-loop:
-	// Send messages if the loopLapse threshold has not been surpassed
-	for timeout := time.After(c.config.LoopLapse); ; {
-		select {
-		case <-timeout:
-	        log.Infof("action: timeout_detected | result: success | client_id: %v",
-                c.config.ID,
-            )
-			break loop
-		// the signal is catched here, which means that the socket was already closed on the last iteration
-		// so we only need to break from the loop
-		case <-signal_channel:
-			log.Infof("action: signal_received | result: success | client_id: %v",
-				c.config.ID,
-			)
-			break loop
-		default:
+	for toSendBytes != currently_sent {
+		sent, err := c.conn.Write(buffer[currently_sent:toSendBytes])
+		currently_sent += sent
+		// the socket was probably closed
+		// when sent < len(buffer), `Write` returns a not nil error
+		// that does not mean that the socket was closed, probably its because of buffer overflows at the sending side
+		if (err != nil) && (sent == 0) {
+			return err
 		}
+	}
+	return nil
+}
 
-		// Create the connection the server in every loop iteration. Send an
-		c.createClientSocket()
+func (c *Client) readAll(bufferLength int) ([]byte, error) {
+	currently_read := 0
+	buffer := make([]byte, bufferLength)
+	for currently_read != bufferLength {
+		read, err := c.conn.Read(buffer[currently_read:bufferLength])
+		currently_read += read
+		if (err != nil) && (read == 0) {
+			return buffer, err
+		}
+	}
+	return buffer, nil
+}
 
-		// TODO: Modify the send to avoid short-write
-		fmt.Fprintf(
-			c.conn,
-			"[CLIENT %v] Message N°%v\n",
+// StartClient: Send the bet to the server and await its confirmation
+func (c *Client) StartClient() {
+	// Create the connection
+	err := c.createClientSocket()
+	if err != nil {
+		log.Errorf("action: create_socket | result: fail | client_id: %v | error: %v",
 			c.config.ID,
-			msgID,
+			err,
 		)
-		msg, err := bufio.NewReader(c.conn).ReadString('\n')
-		msgID++
-		c.conn.Close()
+		return
+	}
 
+	// we defer the closing of the socket so as to not miss it
+	defer c.conn.Close()
+
+	// Serialize the bet
+	betByteArray := SerializeBet(c.bet)
+
+	// Split packet just in case it exceeds the maximum size
+	packets := splitPacketAtSize(betByteArray, c.config.MaxPacketSize)
+	for _, p := range packets {
+		// Write all bytes
+		err = c.writeAll(p)
 		if err != nil {
-			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-                c.config.ID,
+			log.Errorf("action: write_all | result: fail | client_id: %v | error: %v",
+				c.config.ID,
 				err,
 			)
 			return
 		}
-		log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-            c.config.ID,
-            msg,
-        )
-
-		// Wait a time between sending one message and the next one
-		time.Sleep(c.config.LoopPeriod)
 	}
-
-	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+	betState, err := DeserializeBetSavedState(c.readAll)
+	if err == nil && betState == BetStateOk {
+		log.Infof("action: bet_sent | result: success | dni: %v | number: %v",
+			c.bet.PersonDocument,
+			c.bet.PersonBet,
+		)
+	} else if err != nil || betState == BetStateErr {
+		log.Error("action: bet_sent | result: failed | client_id: %v | error: %v",
+			c.config.ID,
+			err,
+		)
+	}
 }

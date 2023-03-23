@@ -1,6 +1,8 @@
 package common
 
-import "bytes"
+import (
+	"bytes"
+)
 
 /*
 	Serializes the bet object into an slice of bytes
@@ -12,16 +14,37 @@ import "bytes"
 	|  2-bytes  | name-length bytes |    2 bytes   | surname-length bytes |    2 bytes    | document-length bytes |   2 bytes   | birthdate-length bytes| 2 bytes |   1 byte   |
 */
 
-func SerializeBet(b *Bet) []byte {
+func serializeBet(b *Bet, lottery_id int) []byte {
 	byteArrays := [][]byte{SerializeStringAndLengthToByteArray(b.PersonName),
 		SerializeStringAndLengthToByteArray(b.PersonSurname),
 		SerializeStringAndLengthToByteArray(b.PersonDocument),
 		SerializeStringAndLengthToByteArray(b.PersonBirthDate),
 		SerializeU16(b.PersonBet),
-		SerializeU8(b.LotteryId),
+		SerializeU8(uint8(lottery_id)),
 	}
 
 	return bytes.Join(byteArrays, nil)
+}
+
+/*
+	Serializes bets in chunks
+
+	At the start of the message, we prepend 4 bytes representing the number of bets in the chunk.
+	Also, a byte signaling if the server should keep listening is appended
+*/
+func SerializeBets(bs []Bet, lottery_id int, keep_reading bool) []byte {
+	bsArrays := make([][]byte, len(bs)+2, len(bs)+2)
+	bsArrays[0] = SerializeU32(uint32(len(bs)))
+	for idx := range bs {
+		bsArrays[1+idx] = serializeBet(&bs[idx], lottery_id)
+	}
+	if keep_reading {
+		bsArrays[len(bsArrays)-1] = SerializeU8(uint8(1))
+	} else {
+		bsArrays[len(bsArrays)-1] = SerializeU8(uint8(0))
+	}
+	res := bytes.Join(bsArrays, nil)
+	return res
 }
 
 const (
@@ -37,6 +60,7 @@ const (
 func DeserializeBetSavedState(readHandle func(int) ([]byte, error)) (uint8, error) {
 	buffer, err := readHandle(1)
 	if err != nil {
+
 		return BetStateErr, err
 	}
 	if DeserializeU8(buffer) == BetStateOk {

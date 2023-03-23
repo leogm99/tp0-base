@@ -3,7 +3,9 @@ server:
   address: "server:12345"
 loop:
   lapse: "0m20s"
-  period: "1s"
+  period: "50ms" # period to avoid flooding or TCP ZeroWindow on the receiving side
 log:
   level: "info"
 max_packet_size: "8192"
+bet_batch_size: "1024"  # change this to tweek performance (higher values may trigger TCP ZeroWindow on the receiver and halt everything!)
+bet_file_prefix: ".data/agency-"

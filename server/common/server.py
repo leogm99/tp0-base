@@ -1,7 +1,7 @@
 import socket
 import logging
 import signal
-from common.protocol import deserialize_bet, serialize_saved_bets_status, SavedBetState
+from common.protocol import deserialize_bets, serialize_saved_bets_status, SavedBetState
 from common.utils import store_bets
 
 
@@ -29,13 +29,13 @@ class Server:
             # accept throws an exception if the socket is closed
             try:
                 client_sock = self.__accept_new_connection()
+                self.__handle_client_connection(client_sock)
             except OSError as e:
                 if self._closed:
-                    logging.info('action: accept_new_connection | result: failed (expected) | reason: acceptor socket was already closed')
+                    logging.info('action: shutdown_acceptor | result: success')
                 else:
-                    logging.info(f'action: accept_new_connection | result: failed | error: {e}')
-                break
-            self.__handle_client_connection(client_sock)
+                    logging.info(f'action: handle_client_connection | result: failed | error: {e}')
+                    break
 
     
     def __recv_all(self, size: int, client_socket: socket.socket):
@@ -60,6 +60,7 @@ class Server:
                 current_sent += sent
             except OSError as e:
                 logging.error(f'action: send_all | result: failed | reason: {e}')
+                break
 
     def __handle_client_connection(self, client_sock):
         """
@@ -70,28 +71,25 @@ class Server:
         """
         recv_handle = lambda len_buffer: self.__recv_all(len_buffer, client_sock)
 
-        def __send_bet_state(state):
-            saved_status = serialize_saved_bets_status(state)
-            packets = _split_packet_at_size(saved_status, self._max_packet_size)
-            for p in packets:
-                self.__send_all(p, client_sock)
-            
-        try:
-            bet = deserialize_bet(recv_handle) 
-            addr = client_sock.getpeername()
-            logging.info(f'action: receive_message | result: success | ip: {addr[0]}')
+        while True:
             try:
-                store_bets([bet])
-                __send_bet_state(SavedBetState.OK)
-                logging.info(f'action: bet_stored | result: success | dni: {bet.document} | number: {bet.number}')
+                bets, keep_reading = deserialize_bets(recv_handle) 
+                logging.info('action: storing-bets | result: in progress')
+                store_bets(bets)
+                self.__send_all(serialize_saved_bets_status(SavedBetState.OK), client_sock)
+                logging.info('action: storing-bets | result: success')
+                if not keep_reading:
+                    logging.info('action: stop_reading | result:success')
+                    break
+            except OSError as e:
+                self.__send_all(serialize_saved_bets_status(SavedBetState.ERR))
+                break
             except BaseException as e:
                 logging.error(f'action: bet_stored | result: failed | error: {e}')
-                __send_bet_state(SavedBetState.ERR)
+                break
+        logging.error(f'action: closing_socket | result: in_progress')
+        client_sock.close()
 
-        except OSError as e:
-            logging.error(f'action: receive_message | result: fail | error: {e}')
-        finally:
-            client_sock.close()
 
     def __accept_new_connection(self):
         """

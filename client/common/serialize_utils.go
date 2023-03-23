@@ -3,7 +3,7 @@ package common
 import "encoding/binary"
 
 func SerializeU8(toSerialize uint8) []byte {
-	payload_buffer := make([]byte, 1)
+	payload_buffer := make([]byte, 1, 1)
 	payload_buffer[0] = toSerialize
 	return payload_buffer
 }
@@ -12,6 +12,12 @@ func SerializeU8(toSerialize uint8) []byte {
 func SerializeU16(toSerialize uint16) []byte {
 	payload_buffer := make([]byte, 2)
 	binary.BigEndian.PutUint16(payload_buffer, toSerialize)
+	return payload_buffer
+}
+
+func SerializeU32(toSerialize uint32) []byte {
+	payload_buffer := make([]byte, 4)
+	binary.BigEndian.PutUint32(payload_buffer, toSerialize)
 	return payload_buffer
 }
 

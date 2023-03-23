@@ -1,9 +1,18 @@
-# TP0: Ej5
+# TP0: Ej6
 
-En este ejercicio se desarrollo un protocolo de comunicacion binario para cubrir el modelo de dominio
-de las agencias y las loterias.
+Para ejecutar este ejercicio primero deberemos ejecutar el script `move_data_to_client.sh` 
+para copiar los datos de las agencias al directorio del cliente.
 
-Los clientes (representando a las agencias), envian paquetes con el siguiente formato:
+`
+    sh scripts/move_data_to_client.sh
+`
+Luego, podemos levantar todo ejecutando `make docker-compose-up`.
+
+Para este ejercicio, se extiende el modelo anterior para habilitar
+el envio de apuestas en batch, de tal manera de reducir los tiempos de
+transmision y de procesamiento.
+
+Los clientes siguen manteniendo la misma estructura para los paquetes de datos de las bets:
 
 ```
     |------------|----------------|-----------|-----------------|--------------|-------------------|--------------|------------------|----------|---------|
@@ -13,27 +22,25 @@ Los clientes (representando a las agencias), envian paquetes con el siguiente fo
     
 ```
 
-Los datos de tamaño variable son precedidos por 2 bytes que indican la cantidad de bytes a leer por socket. Estos tamaños son enviados
-con el endianess de la network (big endian) y luego se vuelven a pasar al endianess local.
-
-El servidor (representando a la loteria) recibe las apuestas, las persiste mediante la funcion `store_bets` y luego envía un unico byte,
-indicando si se pudo persistir o no la informacion:
+Pero, al enviar un batch, lo que se hace es prependear 4 bytes con la cantidad de bets por batch:
 
 ```
-    |-----------|
-    | bet state |
-    |-----------|
-    /  1 byte   /
+    |-----------------|
+    | n_batch_elements|
+    |-----------------|
+    /     4 bytes     /
 ```
-El estado de una bet puede ser 0: Ok o 1: Error.
 
-La deserialización de bytes en python se realiza mediante structure packing.
+La cantidad de elementos por batch es configurable desde el `.yaml` de cliente.
 
-El control de tamaño de paquetes se realiza splitteando los buffers de la aplicacion en paquetes de 8kb o menos 
-(configurable tanto en servidor como en el cliente).
+Cuando se envia todo el batch, debemos notificar al servidor si seguir escuchando o no (capaz quedan batches por enviar),
+por ende, appendeamos 1 byte que sirva de señal para notificarle esto al servidor.
 
-Los issues de short reads y short writes son manejados en ambas aplicaciones mediante wrappers en las funciones de socket correspondientes.
+```
+    |----------------|
+    | keep_listening |
+    |----------------|
+    /     1 byte     /
+```
+Si el byte recibido es 0x1, el server esperará por nuevos batches. Caso contrario, dejara de escuchar por socket.
 
-La manera de testear el correcto funcionamiento es levantando los servicios con `make docker-compose-up`, y luego de un tiempo, 
-attachearse al server mediante `docker exec -it server /bin/bash`, en donde encontraremos el file `bets.csv`, que debería tener las apuestas
-que fueron guardadas correctamente.

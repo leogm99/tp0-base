@@ -92,6 +92,7 @@ func PrintConfig(v *viper.Viper) {
 		v.GetDuration("loop.period"),
 		v.GetString("log.level"),
 		v.GetString("max_packet_size"),
+		v.GetString("bet_batch_size"),
 	)
 }
 
@@ -114,16 +115,23 @@ func main() {
 		LoopLapse:     v.GetDuration("loop.lapse"),
 		LoopPeriod:    v.GetDuration("loop.period"),
 		MaxPacketSize: v.GetInt("max_packet_size"),
+		BetBatchSize:  v.GetInt("bet_batch_size"),
 	}
+	builder := strings.Builder{}
+	builder.WriteString(v.GetString("bet_file_prefix"))
+	builder.WriteString(v.GetString("id"))
+	builder.WriteString(".csv")
 
-	bet := &common.Bet{
-		PersonName:      v.GetString("name"),
-		PersonSurname:   v.GetString("surname"),
-		PersonDocument:  v.GetString("document"),
-		PersonBirthDate: v.GetString("birthdate"),
-		PersonBet:       uint16(v.GetUint("number")),
-		LotteryId:       uint8(v.GetUint("id")),
+	betFilePath := builder.String()
+	betReader, err := common.NewBetReader(betFilePath, clientConfig)
+	if err != nil {
+		log.Fatal(
+			"action: new_bet_reader | result: failed | client_id: %v | error: %v",
+			clientConfig.ID,
+			err,
+		)
+		return
 	}
-	client := common.NewClient(clientConfig, bet)
-	client.StartClient()
+	client := common.NewClient(clientConfig, betReader)
+	client.Run()
 }

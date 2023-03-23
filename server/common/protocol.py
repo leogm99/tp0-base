@@ -1,7 +1,8 @@
-from common.deserialize_utils import deserialize_u8, deserialize_u16, deserialize_string
+from common.deserialize_utils import deserialize_bool, deserialize_u8, deserialize_u16, deserialize_u32, deserialize_string
 from common.serialize_utils import serialize_u8
 from common.utils import Bet
 from enum import Enum
+from typing import Union
 
 def deserialize_bet(recv):
     """
@@ -30,6 +31,16 @@ def deserialize_bet(recv):
                person_document, 
                person_birthdate, 
                person_bet)
+
+
+def deserialize_bets(recv) -> Union[list[Bet], bool]:
+    bets_in_chunk = deserialize_u32(recv(4))
+    bets = []
+    for _ in range(bets_in_chunk):
+        bet = deserialize_bet(recv)
+        bets.append(bet)
+    keep_reading = deserialize_bool(recv(1))
+    return bets, keep_reading
 
 
 class SavedBetState(Enum):

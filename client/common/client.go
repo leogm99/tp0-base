@@ -18,21 +18,22 @@ type ClientConfig struct {
 	LoopLapse     time.Duration
 	LoopPeriod    time.Duration
 	MaxPacketSize int
+	BetBatchSize  int
 }
 
 // Client Entity that encapsulates how
 type Client struct {
-	config ClientConfig
-	conn   net.Conn
-	bet    *Bet
+	config    ClientConfig
+	conn      net.Conn
+	betReader *BetReader
 }
 
 // NewClient Initializes a new client receiving the configuration
 // and the bet as parameters
-func NewClient(config ClientConfig, bet *Bet) *Client {
+func NewClient(config ClientConfig, betReader *BetReader) *Client {
 	client := &Client{
-		config: config,
-		bet:    bet,
+		config:    config,
+		betReader: betReader,
 	}
 	return client
 }
@@ -43,12 +44,9 @@ func splitPacketAtSize(buffer []byte, maxPacketSize int) [][]byte {
 	splits := int(math.Ceil(float64(len(buffer)) / float64(maxPacketSize)))
 	packets := make([][]byte, splits)
 	for i := 0; i < splits; i += 1 {
-		if len(buffer) > maxPacketSize {
-			packets[i] = buffer[i*maxPacketSize : (i+1)*maxPacketSize]
-			buffer = buffer[(i+1)*maxPacketSize:]
-		} else {
-			packets[i] = buffer[:]
-		}
+		start := i * maxPacketSize
+		end := int(math.Min(float64((i+1)*maxPacketSize), float64(len(buffer))))
+		packets[i] = buffer[start:end]
 	}
 	return packets
 }
@@ -82,14 +80,14 @@ func (c *Client) writeAll(buffer []byte) error {
 	currently_sent := 0
 
 	for toSendBytes != currently_sent {
-		sent, err := c.conn.Write(buffer[currently_sent:toSendBytes])
-		currently_sent += sent
+		sent, err := c.conn.Write(buffer[currently_sent:])
 		// the socket was probably closed
 		// when sent < len(buffer), `Write` returns a not nil error
 		// that does not mean that the socket was closed, probably its because of buffer overflows at the sending side
 		if (err != nil) && (sent == 0) {
 			return err
 		}
+		currently_sent += sent
 	}
 	return nil
 }
@@ -98,17 +96,17 @@ func (c *Client) readAll(bufferLength int) ([]byte, error) {
 	currently_read := 0
 	buffer := make([]byte, bufferLength)
 	for currently_read != bufferLength {
-		read, err := c.conn.Read(buffer[currently_read:bufferLength])
-		currently_read += read
+		read, err := c.conn.Read(buffer[currently_read:])
 		if (err != nil) && (read == 0) {
 			return buffer, err
 		}
+		currently_read += read
 	}
 	return buffer, nil
 }
 
-// StartClient: Send the bet to the server and await its confirmation
-func (c *Client) StartClient() {
+// Run: Send best to the server and await its confirmation
+func (c *Client) Run() {
 	// Create the connection
 	err := c.createClientSocket()
 	if err != nil {
@@ -121,33 +119,62 @@ func (c *Client) StartClient() {
 
 	// we defer the closing of the socket so as to not miss it
 	defer c.conn.Close()
-
-	// Serialize the bet
-	betByteArray := SerializeBet(c.bet)
-
-	// Split packet just in case it exceeds the maximum size
-	packets := splitPacketAtSize(betByteArray, c.config.MaxPacketSize)
-	for _, p := range packets {
-		// Write all bytes
-		err = c.writeAll(p)
+	for {
+		bets, keep_reading, err := c.betReader.ReadChunk()
 		if err != nil {
-			log.Errorf("action: write_all | result: fail | client_id: %v | error: %v",
+			log.Errorf(
+				"action: read_chunk | result: fail | client_id: %v | error: %v",
 				c.config.ID,
 				err,
 			)
 			return
 		}
+		if !keep_reading && len(bets) == 0 {
+			return
+		}
+		// Serialize the bets in chunks
+		betByteArrays := SerializeBets(bets, 1, keep_reading)
+
+		// Write all bytes
+		err = c.writeInPackets(betByteArrays)
+		if err != nil {
+			log.Errorf("action: write_packets | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				err,
+			)
+			return
+		}
+		state, _ := DeserializeBetSavedState(c.readAll)
+		if state == BetStateOk {
+			log.Infof("action: bet_sent | result: success | client_id: %v",
+				c.config.ID,
+			)
+		} else {
+			log.Errorf("action: bet_sent | result: fail | client_id: %v",
+				c.config.ID,
+				err,
+			)
+			break
+		}
+		if !keep_reading {
+			log.Infof("action: exit_client_loop | result: success | client_id: %v",
+				c.config.ID,
+			)
+			break
+		}
+		time.Sleep(c.config.LoopPeriod)
 	}
-	betState, err := DeserializeBetSavedState(c.readAll)
-	if err == nil && betState == BetStateOk {
-		log.Infof("action: bet_sent | result: success | dni: %v | number: %v",
-			c.bet.PersonDocument,
-			c.bet.PersonBet,
-		)
-	} else if err != nil || betState == BetStateErr {
-		log.Error("action: bet_sent | result: failed | client_id: %v | error: %v",
-			c.config.ID,
-			err,
-		)
+}
+
+func (c *Client) writeInPackets(buffer []byte) error {
+	// Split packet just in case it exceeds the maximum packet size
+	packets := splitPacketAtSize(buffer, c.config.MaxPacketSize)
+	// changed to index access to avoid copying the packets
+	for idx := range packets {
+		err := c.writeAll(packets[idx])
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }

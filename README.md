@@ -1,6 +1,7 @@
 # TP0: Ej7
 
-Ejecutar este ejercicio requiere unicamente levantar los servicios mediante `make docker-compose-up` y luego
+Ejecutar este ejercicio requiere primero copiar los datos de las agencias mediante el script 
+`move_data_to_client.sh`, luego levantar los servicios mediante `make docker-compose-up` y por ultimo
 observar los logs mediante `make docker-compose-logs`, donde veremos la cantidad de ganadores de cada agencia.
 
 A este ejercicio se le agrega soporte para procesar las bets luego de haberlas recibido. Se extiende el protocolo

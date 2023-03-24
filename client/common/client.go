@@ -126,6 +126,7 @@ func (c *Client) Run() {
 			c.config.ID,
 			err,
 		)
+		return
 	}
 	winners, err := c.receiveWinners()
 	if err != nil {
@@ -133,6 +134,7 @@ func (c *Client) Run() {
 			c.config.ID,
 			err,
 		)
+		return
 	}
 	log.Infof(
 		"action: receive_winners | result: success | number_of_winners: %v",

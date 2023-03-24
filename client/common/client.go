@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -77,38 +78,46 @@ func (c *Client) registerShutdownSignal() <-chan os.Signal {
 
 func (c *Client) writeAll(buffer []byte) error {
 	toSendBytes := len(buffer)
-	currently_sent := 0
+	currentlySent := 0
 
-	for toSendBytes != currently_sent {
-		sent, err := c.conn.Write(buffer[currently_sent:])
+	for toSendBytes != currentlySent {
+		sent, err := c.conn.Write(buffer[currentlySent:])
 		// the socket was probably closed
 		// when sent < len(buffer), `Write` returns a not nil error
 		// that does not mean that the socket was closed, probably its because of buffer overflows at the sending side
 		if (err != nil) && (sent == 0) {
 			return err
 		}
-		currently_sent += sent
+		currentlySent += sent
 	}
 	return nil
 }
 
 func (c *Client) readAll(bufferLength int) ([]byte, error) {
-	currently_read := 0
+	currentlyRead := 0
 	buffer := make([]byte, bufferLength)
-	for currently_read != bufferLength {
-		read, err := c.conn.Read(buffer[currently_read:])
+	for currentlyRead != bufferLength {
+		read, err := c.conn.Read(buffer[currentlyRead:])
 		if (err != nil) && (read == 0) {
 			return buffer, err
 		}
-		currently_read += read
+		currentlyRead += read
 	}
 	return buffer, nil
 }
 
 // Run: Send best to the server and await its confirmation
 func (c *Client) Run() {
+	agencyId, err := strconv.ParseInt(c.config.ID, 10, 32)
+	if err != nil {
+		log.Errorf("action: parse_int | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			err,
+		)
+		return
+	}
 	// Create the connection
-	err := c.createClientSocket()
+	err = c.createClientSocket()
 	if err != nil {
 		log.Errorf("action: create_socket | result: fail | client_id: %v | error: %v",
 			c.config.ID,
@@ -120,7 +129,7 @@ func (c *Client) Run() {
 	// we defer the closing of the socket so as to not miss it
 	defer c.conn.Close()
 	for {
-		bets, keep_reading, err := c.betReader.ReadChunk()
+		bets, keepReading, err := c.betReader.ReadChunk()
 		if err != nil {
 			log.Errorf(
 				"action: read_chunk | result: fail | client_id: %v | error: %v",
@@ -129,11 +138,11 @@ func (c *Client) Run() {
 			)
 			return
 		}
-		if !keep_reading && len(bets) == 0 {
+		if !keepReading && len(bets) == 0 {
 			return
 		}
 		// Serialize the bets in chunks
-		betByteArrays := SerializeBets(bets, 1, keep_reading)
+		betByteArrays := SerializeBets(bets, int(agencyId), keepReading)
 
 		// Write all bytes
 		err = c.writeInPackets(betByteArrays)
@@ -156,7 +165,7 @@ func (c *Client) Run() {
 			)
 			break
 		}
-		if !keep_reading {
+		if !keepReading {
 			log.Infof("action: exit_client_loop | result: success | client_id: %v",
 				c.config.ID,
 			)

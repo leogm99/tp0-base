@@ -68,3 +68,32 @@ func DeserializeBetSavedState(readHandle func(int) ([]byte, error)) (uint8, erro
 	}
 	return BetStateErr, nil
 }
+
+/*
+	Deserialize the list of documents of winners
+
+	It firts reads 4 bytes which represent how many winners there are
+	Then it simply reads 2 bytes representing the length of the document
+	and reads that amount of bytes from the socket to receive the document
+*/
+func DeserializeWinners(readHandle func(int) ([]byte, error)) ([]string, error) {
+	nWinnersBuffer, err := readHandle(4)
+	if err != nil {
+		return nil, err
+	}
+	nWinners := int(DeserializeU32(nWinnersBuffer))
+	winnerDocuments := make([]string, 0, nWinners)
+	for i := 0; i < nWinners; i += 1 {
+		lengthDocumentBuffer, err := readHandle(2)
+		if err != nil {
+			return nil, err
+		}
+		lengthDocument := DeserializeU16(lengthDocumentBuffer)
+		documentBuffer, err := readHandle(int(lengthDocument))
+		if err != nil {
+			return nil, err
+		}
+		winnerDocuments = append(winnerDocuments, DeserializeString(documentBuffer))
+	}
+	return winnerDocuments, nil
+}

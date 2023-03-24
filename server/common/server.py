@@ -1,9 +1,9 @@
 import socket
 import logging
 import signal
-from common.protocol import deserialize_bets, serialize_saved_bets_status, SavedBetState
-from common.utils import store_bets
-
+from common.protocol import deserialize_bets, serialize_saved_bets_status, serialize_bet_winners, SavedBetState
+from common.utils import store_bets, load_bets, has_won
+N_AGENCIES = 5
 
 class Server:
     def __init__(self, port, listen_backlog, max_packet_size):
@@ -25,17 +25,36 @@ class Server:
 
         logging.info('Registering SIGTERM signal')
         signal.signal(signal.SIGTERM, lambda _n,_f: self.stop())
-        while not self._closed:
-            # accept throws an exception if the socket is closed
-            try:
+        handled_agencies = 0
+        client_agency_sockets = []
+        try:
+            while not self._closed and handled_agencies != N_AGENCIES:
+                # accept throws an exception if the socket is closed
                 client_sock = self.__accept_new_connection()
-                self.__handle_client_connection(client_sock)
-            except OSError as e:
-                if self._closed:
-                    logging.info('action: shutdown_acceptor | result: success')
-                else:
-                    logging.info(f'action: handle_client_connection | result: failed | error: {e}')
-                    break
+                agency_id = self.__receive_agency_bets(client_sock)
+                if agency_id == -1:
+                    raise ValueError("Invalid agency id")
+                client_agency_sockets.append((agency_id, client_sock))
+                handled_agencies += 1
+                logging.info(f'{handled_agencies}')
+        except OSError as e:
+            if self._closed:
+                logging.info('action: shutdown_acceptor | result: success')
+            else:
+                logging.info(f'action: handle_client_connection | result: failed | error: {e}')
+                self.stop()
+        except BaseException as e:
+            logging.info(f'action: receive_agency_bets | result: failed | error: {e}')
+            self.stop()
+        if self._closed:
+            return
+        logging.info('action: raffle | result: success')
+        try:
+            for agency_id, sock in client_agency_sockets:
+                self.__send_winners(agency_id, sock)
+        except OSError as e:
+            logging.info(f'action: send_winners | result: failed | error: {e}')
+        self.stop()
 
     
     def __recv_all(self, size: int, client_socket: socket.socket):
@@ -62,15 +81,16 @@ class Server:
                 logging.error(f'action: send_all | result: failed | reason: {e}')
                 break
 
-    def __handle_client_connection(self, client_sock):
+    def __receive_agency_bets(self, client_sock) -> int:
         """
         Read message from a specific client socket and closes the socket
+        Returns the agency_id associated with the client
 
         If a problem arises in the communication with the client, the
         client socket will also be closed
         """
         recv_handle = lambda len_buffer: self.__recv_all(len_buffer, client_sock)
-
+        agency = -1
         while True:
             try:
                 bets, keep_reading = deserialize_bets(recv_handle) 
@@ -79,6 +99,7 @@ class Server:
                 self.__send_all(serialize_saved_bets_status(SavedBetState.OK), client_sock)
                 logging.info('action: storing-bets | result: success')
                 if not keep_reading:
+                    agency = bets[0].agency
                     logging.info('action: stop_reading | result:success')
                     break
             except OSError as e:
@@ -87,8 +108,7 @@ class Server:
             except BaseException as e:
                 logging.error(f'action: bet_stored | result: failed | error: {e}')
                 break
-        logging.error(f'action: closing_socket | result: in_progress')
-        client_sock.close()
+        return agency
 
 
     def __accept_new_connection(self):
@@ -123,6 +143,14 @@ class Server:
         self._server_socket.close()
         self._closed = True
         logging.info('action: stop_server | result: success')
+
+    def __send_winners(self, agency_id: int, client_socket: socket.socket):
+        winners = list(filter(lambda bet: (bet.agency == agency_id) and has_won(bet), load_bets()))
+        winners_serialized = serialize_bet_winners(winners)
+        packets = _split_packet_at_size(winners_serialized, self._max_packet_size)
+        for p in packets:
+            self.__send_all(p, client_socket)
+
 
 
 def _split_packet_at_size(buffer: bytearray, max_packet_size: int) -> list[bytearray]:

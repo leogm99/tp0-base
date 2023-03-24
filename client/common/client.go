@@ -53,7 +53,7 @@ func splitPacketAtSize(buffer []byte, maxPacketSize int) [][]byte {
 }
 
 // CreateClientSocket Initializes client socket. In case of
-// failure, error is printed in stdout/stderr and exit 1
+// failure, e is printed in stdout/stderr and exit 1
 // is returned
 func (c *Client) createClientSocket() error {
 	conn, err := net.Dial("tcp", c.config.ServerAddress)
@@ -108,16 +108,8 @@ func (c *Client) readAll(bufferLength int) ([]byte, error) {
 
 // Run: Send best to the server and await its confirmation
 func (c *Client) Run() {
-	agencyId, err := strconv.ParseInt(c.config.ID, 10, 32)
-	if err != nil {
-		log.Errorf("action: parse_int | result: fail | client_id: %v | error: %v",
-			c.config.ID,
-			err,
-		)
-		return
-	}
 	// Create the connection
-	err = c.createClientSocket()
+	err := c.createClientSocket()
 	if err != nil {
 		log.Errorf("action: create_socket | result: fail | client_id: %v | error: %v",
 			c.config.ID,
@@ -128,6 +120,35 @@ func (c *Client) Run() {
 
 	// we defer the closing of the socket so as to not miss it
 	defer c.conn.Close()
+	err = c.sendBets()
+	if err != nil {
+		log.Errorf("action: send_bets | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			err,
+		)
+	}
+	winners, err := c.receiveWinners()
+	if err != nil {
+		log.Errorf("action: receive_winners | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			err,
+		)
+	}
+	log.Infof(
+		"action: receive_winners | result: success | number_of_winners: %v",
+		len(winners),
+	)
+}
+
+func (c *Client) sendBets() error {
+	agencyId, err := strconv.ParseInt(c.config.ID, 10, 32)
+	if err != nil {
+		log.Errorf("action: parse_int | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			err,
+		)
+		return err
+	}
 	for {
 		bets, keepReading, err := c.betReader.ReadChunk()
 		if err != nil {
@@ -136,22 +157,21 @@ func (c *Client) Run() {
 				c.config.ID,
 				err,
 			)
-			return
+			return err
 		}
 		if !keepReading && len(bets) == 0 {
-			return
+			return nil
 		}
 		// Serialize the bets in chunks
 		betByteArrays := SerializeBets(bets, int(agencyId), keepReading)
 
-		// Write all bytes
 		err = c.writeInPackets(betByteArrays)
 		if err != nil {
 			log.Errorf("action: write_packets | result: fail | client_id: %v | error: %v",
 				c.config.ID,
 				err,
 			)
-			return
+			return err
 		}
 		state, _ := DeserializeBetSavedState(c.readAll)
 		if state == BetStateOk {
@@ -163,7 +183,7 @@ func (c *Client) Run() {
 				c.config.ID,
 				err,
 			)
-			break
+			return err
 		}
 		if !keepReading {
 			log.Infof("action: exit_client_loop | result: success | client_id: %v",
@@ -173,6 +193,7 @@ func (c *Client) Run() {
 		}
 		time.Sleep(c.config.LoopPeriod)
 	}
+	return nil
 }
 
 func (c *Client) writeInPackets(buffer []byte) error {
@@ -186,4 +207,9 @@ func (c *Client) writeInPackets(buffer []byte) error {
 		}
 	}
 	return nil
+}
+
+// Returns a list of winners
+func (c *Client) receiveWinners() ([]string, error) {
+	return DeserializeWinners(c.readAll)
 }

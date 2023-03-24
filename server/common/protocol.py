@@ -1,5 +1,5 @@
 from common.deserialize_utils import deserialize_bool, deserialize_u8, deserialize_u16, deserialize_u32, deserialize_string
-from common.serialize_utils import serialize_u8
+from common.serialize_utils import serialize_u8, serialize_u32, serialize_string_and_length
 from common.utils import Bet
 from enum import Enum
 from typing import Union
@@ -55,3 +55,22 @@ def serialize_saved_bets_status(state: SavedBetState) -> bytearray:
     """
 
     return serialize_u8(state.value)
+
+def serialize_bet_winners(bets: list[Bet]) -> bytearray:
+    """
+    Serializes the list of bet winners
+
+    Prepended to the list is a 4 byte unsigned integer that represents how many winners there are to deserialize
+    """
+    winners_bytearray = serialize_u32(len(bets))
+    documents_serialized = list(map(lambda bet: serialize_document(bet.document), bets))
+    for document_serialized in documents_serialized:
+        winners_bytearray.extend(document_serialized)
+    return winners_bytearray
+
+
+def serialize_document(document: str) -> bytearray:
+    """
+    Serialize the document of the bet
+    """
+    return serialize_string_and_length(document)

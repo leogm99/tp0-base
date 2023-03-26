@@ -1,5 +1,5 @@
 from typing import Any
-from socket import socket
+from socket import socket, SHUT_RDWR
 from multiprocessing import get_logger, Queue
 from common.utils import send_all, recv_all, store_bets, load_bets, has_won, split_packet_at_size
 from common.protocol import deserialize_bets, serialize_saved_bets_status, SavedBetState, serialize_bet_winners
@@ -44,6 +44,8 @@ class BetReceiver:
                 send_all(serialize_saved_bets_status(SavedBetState.ERR))
                 break
             except BaseException as e:
+                self._client_socket.shutdown(SHUT_RDWR)
+                self._client_socket.close()
                 logger.error(f'action: bet_stored | result: failed | error: {e}')
                 break
         return agency

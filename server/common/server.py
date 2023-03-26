@@ -2,7 +2,8 @@ import socket
 import logging
 import signal
 from common.server_pool import ServerPool
-from common.client_handler import ClientHandler
+from common.bet_receiver import BetReceiver
+
 N_AGENCIES = 5
 
 class Server:
@@ -16,11 +17,11 @@ class Server:
 
     def run(self):
         """
-        Dummy Server loop
+        Server loop
 
         Server that accept a new connections and establishes a
-        communication with a client. After client with communucation
-        finishes, servers starts to accept new connections again
+        communication with a client.
+        Each client is handled in a pool of processes (virtually in parallel).
         """
         logging.info('Registering SIGTERM signal')
         signal.signal(signal.SIGTERM, lambda _n,_f: self.stop())
@@ -31,13 +32,25 @@ class Server:
         logging.info('action: server_pool_start | result: success')
 
         handled_agencies = 0
+        pool_results = []
         try:
             while not self._closed and handled_agencies != N_AGENCIES:
                 # accept throws an exception if the socket is closed
                 client_sock = self.__accept_new_connection()
-                handler = ClientHandler(client_socket=client_sock, max_packet_size=self._max_packet_size)
-                pool.apply(handler)
+                handler = BetReceiver(client_socket=client_sock, 
+                                      max_packet_size=self._max_packet_size)
+                pool_results.append(pool.apply(handler))
                 handled_agencies += 1
+            logging.info('action: await_pool_results | result: in progress')
+            # this actually blocks execution until all the clients have sent their bets
+            # it works like a barrier
+            pool_results = [pr.get() for pr in pool_results]
+            logging.info('action: await_pool_results | result: success')
+            logging.info('action: raffle | result: success')
+            # send new tasks to the pool
+            for raffle_winner_task in pool_results:
+                _ = pool.apply(raffle_winner_task)
+
         except OSError as e:
             if self._closed:
                 logging.info('action: shutdown_acceptor | result: success')
@@ -48,8 +61,6 @@ class Server:
         finally:
             pool.stop()
             self.stop()
-        from time import sleep
-        sleep(1000)
     
     def __accept_new_connection(self):
         """

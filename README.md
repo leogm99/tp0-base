@@ -1,36 +1,19 @@
-# TP0: Ej7
+# TP0: Ej8
 
 Ejecutar este ejercicio requiere primero copiar los datos de las agencias mediante el script 
 `move_data_to_client.sh`, luego levantar los servicios mediante `make docker-compose-up` y por ultimo
 observar los logs mediante `make docker-compose-logs`, donde veremos la cantidad de ganadores de cada agencia.
 
-A este ejercicio se le agrega soporte para procesar las bets luego de haberlas recibido. Se extiende el protocolo
-para soportar el envio de los DNIS ganadores a cada agencia.
+En este ejercicio se agrega la capacidad al server de procesar clientes virtualmente en paralelo. El server 
+levanta una pool de procesos, que recibe tasks. El primer tipo de task es de tipo `BetReceiver`, en donde se 
+escucha por socket las apuestas de cada agencia y se guardan en el archivo de apuestas. Este archivo, que es accedido
+de manera concurrente por los multiples procesos de la pool, es protegido mediante file locks para que solamente
+uno de esos procesos pueda escribir a la vez. La lectura del archivo, similarmente, es protegida mediante un shared
+lock.
 
-El server, luego de haber recibido las apuestas de todas las agencias, debe decidir a que agencia enviar cada bet.
-Para esto, lee primero de las apuestas recibidas el agencyID, que por la manera serial en la que está programado,
-identifica univocamente a que socket se le deberá enviar las apuestas.
+El proceso/hilo principal esperará a que todas las agencias hayan terminado de enviar sus apuestas. Esto se logra
+esperando a los async results de cada tarea lanzada a la pool. Estos async results a su vez guardan la proxima tarea
+a ejecutar, que es la de enviar a cada agencia sus respectivos ganadores. Se vuelven a pasar las tareas a la pool.
 
-Luego, lee las apuestas mediante la funcion `load_bets` y filtra aquellas apuestas que sean de la agencia actual,
-mappeando el documento unicamente.
-
-La extension del protocolo resulta en los siguientes paqutes:
-
-```
-    |-------------|
-    |   nWinners  |
-    |-------------|
-    /   4 bytes   /
-
-```
-
-```
-    |--------------|----------------|
-    | document-len |    document    |
-    |--------------|----------------|
-    /   2 bytes    /  doc-len bytes /
-
-```
-
-El servidor entonces envia 4 bytes que indican cuantos ganadores se deberan leer. Por cada ganador, necesitamos 
-leer su documento, que como se representa como un string, incluye 2 bytes de largo.
+Finalmente, se cierra la pool, prohibiendo que se reciban nuevas tareas, y se la joinea para liberar los procesos y
+recursos reservados.

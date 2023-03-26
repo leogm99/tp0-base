@@ -52,6 +52,8 @@ class Server:
         try:
             for agency_id, sock in client_agency_sockets:
                 self.__send_winners(agency_id, sock)
+                sock.shutdown(socket.SHUT_RDWR)
+                sock.close()
         except OSError as e:
             logging.info(f'action: send_winners | result: failed | error: {e}')
         self.stop()

@@ -3,7 +3,7 @@ import logging
 import signal
 from common.protocol import deserialize_bet, serialize_saved_bets_status, SavedBetState
 from common.utils import store_bets
-
+N_AGENCIES = 5
 
 class Server:
     def __init__(self, port, listen_backlog, max_packet_size):
@@ -25,7 +25,8 @@ class Server:
 
         logging.info('Registering SIGTERM signal')
         signal.signal(signal.SIGTERM, lambda _n,_f: self.stop())
-        while not self._closed:
+        handled_agencies = 0
+        while not self._closed and handled_agencies != N_AGENCIES:
             # accept throws an exception if the socket is closed
             try:
                 client_sock = self.__accept_new_connection()
@@ -36,6 +37,8 @@ class Server:
                     logging.info(f'action: accept_new_connection | result: failed | error: {e}')
                 break
             self.__handle_client_connection(client_sock)
+            handled_agencies+=1
+        self.stop()
 
     
     def __recv_all(self, size: int, client_socket: socket.socket):

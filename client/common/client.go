@@ -43,12 +43,9 @@ func splitPacketAtSize(buffer []byte, maxPacketSize int) [][]byte {
 	splits := int(math.Ceil(float64(len(buffer)) / float64(maxPacketSize)))
 	packets := make([][]byte, splits)
 	for i := 0; i < splits; i += 1 {
-		if len(buffer) > maxPacketSize {
-			packets[i] = buffer[i*maxPacketSize : (i+1)*maxPacketSize]
-			buffer = buffer[(i+1)*maxPacketSize:]
-		} else {
-			packets[i] = buffer[:]
-		}
+		start := i * maxPacketSize
+		end := int(math.Min(float64((i+1)*maxPacketSize), float64(len(buffer))))
+		packets[i] = buffer[start:end]
 	}
 	return packets
 }

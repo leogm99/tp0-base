@@ -14,6 +14,7 @@ type BetReader struct {
 	file      *os.File
 	reader    *csv.Reader
 	cacheLine []string
+	open      bool
 }
 
 func NewBetReader(filePath string, config ClientConfig) (*BetReader, error) {
@@ -32,6 +33,7 @@ func NewBetReader(filePath string, config ClientConfig) (*BetReader, error) {
 		file:      file,
 		reader:    csv.NewReader(file),
 		cacheLine: nil,
+		open:      true,
 	}, nil
 }
 
@@ -41,6 +43,9 @@ func NewBetReader(filePath string, config ClientConfig) (*BetReader, error) {
 // and an error
 
 func (b *BetReader) ReadChunk() ([]Bet, bool, error) {
+	if !b.open {
+		return nil, false, nil
+	}
 	batch := b.config.BetBatchSize
 	bets := make([]Bet, 0)
 	if b.cacheLine != nil {
@@ -108,4 +113,12 @@ func (b *BetReader) checkIfRemainsLine() bool {
 		b.setCacheLine(line)
 	}
 	return shouldKeepReading
+}
+
+func DestroyBetReader(reader *BetReader) {
+	if !reader.open {
+		return
+	}
+	reader.file.Close()
+	reader.open = false
 }

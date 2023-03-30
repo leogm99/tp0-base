@@ -134,4 +134,13 @@ func main() {
 	}
 	client := common.NewClient(clientConfig, betReader)
 	client.Run()
+	log.Infof(
+		"action: destroy_bet_reader | result: in progress | client_id: %v",
+		clientConfig.ID,
+	)
+	common.DestroyBetReader(betReader)
+	log.Infof(
+		"action: destroy_bet_reader | result: success | client_id: %v",
+		clientConfig.ID,
+	)
 }
